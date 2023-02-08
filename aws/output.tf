@@ -15,5 +15,5 @@ output "pulsar_ssh_host" {
 }
 
 output "zookeeper_conf_url" {
-  value = "${aws_instance.zookeeper.0.public_ip}:2181"
+  value = "${aws_instance.zookeeper.0.private_ip}:2181"
 }
