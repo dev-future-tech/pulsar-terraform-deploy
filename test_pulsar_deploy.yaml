@@ -95,6 +95,7 @@
         zookeeper_servers: "{{ groups['zookeeper']|map('extract', hostvars, ['ansible_default_ipv4', 'address'])|map('regex_replace', '^(.*)$', '\\1:2181') | join(',') }}"
         service_url: "{{ pulsar_service_url }}"
         http_url: "{{ pulsar_web_url }}"
+        zk_admin_url: "{{ zookeeper_conf_url }}"
         pulsar_version: "2.11.0"
     - name: Download Pulsar binary package
       unarchive:
@@ -112,12 +113,16 @@
       template:
         src: "../templates/pulsar_env.sh"
         dest: "/opt/pulsar/conf/pulsar_env.sh"
+    - name: Set up broker
+      template:
+        src: "../templates/broker.conf"
+        dest: "/opt/pulsar/conf/broker.conf"
     - name: Initialize cluster metadata
       shell: |
         bin/pulsar initialize-cluster-metadata \
           --cluster {{ cluster_name }} \
-          --zookeeper localhost:2181 \
-          --configuration-store localhost:2181 \
+          --zookeeper {{ zk_admin_url }} \
+          --configuration-store {{ zk_admin_url }} \
           --web-service-url {{ http_url }} \
           --broker-service-url {{ service_url }}
       args:
@@ -185,10 +190,6 @@
 #        - redis
 #        - solr
 #        - twitter
-    - name: Set up broker
-      template:
-        src: "../templates/broker.conf"
-        dest: "/opt/pulsar/conf/broker.conf"
     - name: Set up function worker
       template:
         src: "../templates/functions_worker.yml"

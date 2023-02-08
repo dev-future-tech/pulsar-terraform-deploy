@@ -23,13 +23,15 @@ After=network.target
 
 [Service]
 Environment=OPTS=-Dstats_server_port=2182
-ExecStart=/opt/zookeeper/bin/zkServer.sh start /opt/zookeeper/conf/zookeeper.conf
+ExecStart=/opt/zookeeper/bin/zkServer.sh start-foreground /opt/zookeeper/conf/zookeeper.conf
+ExecStop=/opt/zookeeper/bin/zkServer.sh stop /opt/zookeeper/conf/zookeeper.conf
 WorkingDirectory=/opt/zookeeper
 RestartSec=1s
 Restart=on-failure
 Type=simple
 User=ec2-user
 Group=ec2-user
+SuccessExitStatus=143
 
 [Install]
 WantedBy=multi-user.target

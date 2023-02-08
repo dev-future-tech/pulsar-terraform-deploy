@@ -13,3 +13,7 @@ output "pulsar_web_url" {
 output "pulsar_ssh_host" {
   value = "${aws_instance.proxy.0.public_ip}"
 }
+
+output "zookeeper_conf_url" {
+  value = "${aws_instance.zookeeper.0.public_ip}:2181"
+}

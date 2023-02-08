@@ -17,8 +17,81 @@
 # under the License.
 #
 
+# Test bed for the Pulsar deploy
+
+- name: ZooKeeper setup
+  hosts: zookeeper
+  connection: ssh
+  become: true
+  tasks:
+    - name: Create necessary directories
+      file:
+        path: "{{item }}"
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+      with_items: ["/opt/zookeeper"]
+    - name: Install RPM packages
+      yum:
+        state: latest
+        name:
+          - wget
+          - java
+          - sysstat
+          - vim
+    - set_fact:
+        zookeeper_servers: "{{ groups['zookeeper']|map('extract', hostvars, ['ansible_default_ipv4', 'address'])|map('regex_replace', '^(.*)$', '\\1:2181') | join(',') }}"
+        service_url: "{{ pulsar_service_url }}"
+        http_url: "{{ pulsar_web_url }}"
+        zookeeper_version: "3.8.1"
+    - name: Download ZooKeeper binary package
+      unarchive:
+        src: https://dlcdn.apache.org/zookeeper/zookeeper-{{ zookeeper_version }}/apache-zookeeper-{{ zookeeper_version }}-bin.tar.gz
+        remote_src: yes
+        owner: ec2-user
+        group: ec2-user
+        dest: /opt/zookeeper
+        extra_opts: ["--strip-components=1"]
+    - set_fact:
+        max_heap_memory: "12g"
+        max_direct_memory: "12g"
+        cluster_name: "local"
+
+- name: Set up ZooKeeper
+  hosts: zookeeper
+  connection: ssh
+  become: true
+  tasks:
+    - set_fact:
+        zid: "{{ groups['zookeeper'].index(inventory_hostname) }}"
+        max_heap_memory: "512m"
+        max_direct_memory: "1g"
+    - name: Create ZooKeeper data directory
+      file:
+        path: "/opt/zookeeper/data"
+        owner: ec2-user
+        group: ec2-user
+        state: directory
+    - name: Add zookeeper.conf file
+      template:
+        src: "../templates/zoo.cfg"
+        dest: "/opt/zookeeper/conf/zookeeper.conf"
+    - name: Add myid file for ZooKeeper
+      template:
+        src: "../templates/myid"
+        dest: "/opt/zookeeper/data/myid"
+    - name: Add zookeeper.service systemd file
+      template:
+        src: "../templates/zookeeper.service"
+        dest: "/etc/systemd/system/zookeeper.service"
+    - name: systemd ZooKeeper start
+      systemd:
+        state: restarted
+        daemon_reload: yes
+        name: "zookeeper"
+
 - name: Pulsar setup
-  hosts: zookeeper, bookie, broker, proxy
+  hosts: bookie, broker, proxy
   connection: ssh
   become: true
   tasks:
@@ -41,6 +114,7 @@
         zookeeper_servers: "{{ groups['zookeeper']|map('extract', hostvars, ['ansible_default_ipv4', 'address'])|map('regex_replace', '^(.*)$', '\\1:2181') | join(',') }}"
         service_url: "{{ pulsar_service_url }}"
         http_url: "{{ pulsar_web_url }}"
+        zk_admin_url: "{{ zookeeper_conf_url }}"
         pulsar_version: "2.11.0"
     - name: Download Pulsar binary package
       unarchive:
@@ -58,58 +132,21 @@
       template:
         src: "../templates/pulsar_env.sh"
         dest: "/opt/pulsar/conf/pulsar_env.sh"
-- name: Install Zookeeper
-  hosts: zookeeper
-  connection: ssh
-- name: Set up ZooKeeper
-  hosts: zookeeper
-  connection: ssh
-  become: true
-  tasks:
-    - set_fact:
-        zid: "{{ groups['zookeeper'].index(inventory_hostname) }}"
-        max_heap_memory: "512m"
-        max_direct_memory: "1g"
-    - name: Create ZooKeeper data directory
-      file:
-        path: "/opt/pulsar/{{ item }}"
-        owner: ec2-user
-        group: ec2-user
-        state: directory
-      with_items:
-        - data/zookeeper
-    - name: Add pulsar_env.sh configuration file
+    - name: Set up broker
       template:
-        src: "../templates/pulsar_env.sh"
-        dest: "/opt/pulsar/conf/pulsar_env.sh"
-    - name: Add zookeeper.conf file
-      template:
-        src: "../templates/zoo.cfg"
-        dest: "/opt/pulsar/conf/zookeeper.conf"
-    - name: Add myid file for ZooKeeper
-      template:
-        src: "../templates/myid"
-        dest: "/opt/pulsar/data/zookeeper/myid"
-    - name: Add zookeeper.service systemd file
-      template:
-        src: "../templates/zookeeper.service"
-        dest: "/etc/systemd/system/zookeeper.service"
-    - name: systemd ZooKeeper start
-      systemd:
-        state: restarted
-        daemon_reload: yes
-        name: "zookeeper"
+        src: "../templates/broker.conf"
+        dest: "/opt/pulsar/conf/broker.conf"
     - name: Initialize cluster metadata
       shell: |
         bin/pulsar initialize-cluster-metadata \
           --cluster {{ cluster_name }} \
-          --zookeeper localhost:2181 \
-          --configuration-store localhost:2181 \
+          --zookeeper {{ zk_admin_url }} \
+          --configuration-store {{ zk_admin_url }} \
           --web-service-url {{ http_url }} \
           --broker-service-url {{ service_url }}
       args:
         chdir: /opt/pulsar
-      when: groups['zookeeper'][0] == inventory_hostname
+      when: groups['broker'][0] == inventory_hostname
 
 - name: Set up bookies
   hosts: bookie
@@ -172,10 +209,6 @@
 #        - redis
 #        - solr
 #        - twitter
-    - name: Set up broker
-      template:
-        src: "../templates/broker.conf"
-        dest: "/opt/pulsar/conf/broker.conf"
     - name: Set up function worker
       template:
         src: "../templates/functions_worker.yml"
