@@ -149,3 +149,82 @@ Run "sudo yum update" to apply all updates.
 $
 ```
 
+# Testing your cluster
+
+Making sure you have a local copy of Apache Pulsar, we want to configure the `$PULSAR_HOME/conf/client.conf` file:
+
+Using the outputs from terraform (`terraform outputs`) update the following configuration values:
+
+```
+webServiceUrl=(value from pulsar_web_url)
+brokerServiceUrl=(value from pulsar_service_url)
+```
+
+Then test the conections with a quick query of the clusters:
+
+```bash
+$ bin/pulsar-admin clusters list
+local
+$
+```
+
+Let's check to see what tenants and namespaces exist:
+
+```bash
+$ bin/pulsar-admin tenants list
+public
+pulsar
+$ bin/pulsar-admin tenants get public
+{
+  "adminRoles" : [ ],
+  "allowedClusters" : [ "local" ]
+}
+$ bin/pulsar-admin namespaces list public
+public/default
+$ bin/pulsar-admin topics create public/default/alerts
+$ bin/pulsar-admin topics list public/default         
+persistent://public/default/alerts
+```
+
+Now that we have created the topic `alerts`, let's send some messages to it!
+
+In one terminal window, create a new subcriber:
+
+```bash
+$ bin/pulsar-client consume persistent://public/default/alerts -n 100 -s "pulsar-consumer" 
+[persistent://public/default/alerts][pulsar-consumer] Subscribed to topic on pulsar-elb-<HOST>/<IP Address>:6650 -- consumer: 0
+```
+
+In another terminal window, run the following to create some messages:
+
+```bash
+$ bin/pulsar-client produce persistent://public/default/alerts --messages "$(seq -s, -f 'Message NO.%g' 1 10)"
+...
+PulsarClientTool - 10 messages successfully produced
+```
+
+You should see your messages arrive in your consumer:
+
+```bash
+----- got message -----
+key:[null], properties:[], content:Message NO.1
+----- got message -----
+key:[null], properties:[], content:Message NO.2
+----- got message -----
+key:[null], properties:[], content:Message NO.3
+----- got message -----
+key:[null], properties:[], content:Message NO.4
+----- got message -----
+key:[null], properties:[], content:Message NO.5
+----- got message -----
+key:[null], properties:[], content:Message NO.6
+----- got message -----
+key:[null], properties:[], content:Message NO.7
+----- got message -----
+key:[null], properties:[], content:Message NO.8
+----- got message -----
+key:[null], properties:[], content:Message NO.9
+----- got message -----
+key:[null], properties:[], content:Message NO.10
+```
+
