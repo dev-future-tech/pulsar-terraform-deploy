@@ -27,8 +27,6 @@ WorkingDirectory=/opt/pulsar
 RestartSec=1s
 Restart=on-failure
 Type=simple
-User=ec2-user
-Group=ec2-user
 
 [Install]
 WantedBy=multi-user.target
